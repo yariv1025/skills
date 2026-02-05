@@ -26,6 +26,44 @@ This skill encodes the OWASP Kubernetes Top 10 for secure cluster and workload d
 
 - Run workloads as non-root with read-only filesystem where possible; use image signing and supply chain controls. Apply least-privilege RBAC and network policies; centralize policy (e.g. OPA); secure secrets and audit logging.
 
+## Quick Reference / Examples
+
+| Task | Approach |
+|------|----------|
+| Harden pod | Non-root, read-only rootfs, drop capabilities. See [K01](references/k01-insecure-workload-configurations.md). |
+| Secure images | Sign images, scan for CVEs, use trusted registries. See [K02](references/k02-supply-chain-vulnerabilities.md). |
+| Limit RBAC | Least privilege, no cluster-admin for workloads. See [K03](references/k03-permissive-rbac.md). |
+| Network policies | Default deny, explicit allow per namespace. See [K07](references/k07-network-segmentation.md). |
+| Manage secrets | Use external secrets manager or encrypted secrets. See [K08](references/k08-secrets-management.md). |
+
+**Safe - hardened SecurityContext:**
+```yaml
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+```
+
+**Unsafe - privileged container:**
+```yaml
+securityContext:
+  privileged: true  # NEVER in production - full host access
+```
+
+**Network policy - default deny ingress:**
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+```
+
 ## Workflow
 
 Load the reference for the risk you are addressing. See [OWASP Kubernetes Top 10](https://owasp.org/www-project-kubernetes-top-ten/) for the official list.

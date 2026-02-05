@@ -26,6 +26,48 @@ This skill encodes the OWASP Top 10 Serverless Interpretation for secure serverl
 
 - Validate and sanitize event input (injection); use least privilege for function IAM; avoid hardcoded secrets; secure config and dependencies; enable logging and monitoring.
 
+## Quick Reference / Examples
+
+| Task | Approach |
+|------|----------|
+| Prevent event injection | Validate/sanitize all event data (API Gateway, S3, SNS). See [SL1](references/sl01-injection.md). |
+| Least privilege IAM | Scope function roles to exact resources needed. See [SL5](references/sl05-broken-access-control.md). |
+| Manage secrets | Use Secrets Manager/Parameter Store, not env vars. See [SL3](references/sl03-sensitive-data-exposure.md). |
+| Secure dependencies | Pin versions, scan for vulnerabilities. See [SL9](references/sl09-vulnerable-components.md). |
+| Enable logging | CloudWatch/X-Ray for all functions. See [SL10](references/sl10-logging-monitoring.md). |
+
+**Safe - input validation in Lambda:**
+```python
+import json
+def handler(event, context):
+    body = json.loads(event.get("body", "{}"))
+    user_id = body.get("user_id", "")
+    if not user_id.isalnum() or len(user_id) > 36:
+        return {"statusCode": 400, "body": "Invalid user_id"}
+    # Proceed with validated input
+```
+
+**Safe - least privilege IAM policy:**
+```yaml
+# serverless.yml
+provider:
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action: dynamodb:GetItem
+          Resource: arn:aws:dynamodb:*:*:table/users
+```
+
+**Unsafe - overly permissive IAM:**
+```yaml
+# NEVER do this
+statements:
+  - Effect: Allow
+    Action: "*"
+    Resource: "*"
+```
+
 ## Workflow
 
 Load the reference for the risk you are addressing. Confirm exact risk names from the official OWASP Serverless Top 10 PDF.

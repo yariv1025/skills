@@ -35,6 +35,99 @@ Failures related to cryptography (and exposure of sensitive data) include weak o
 - **Secrets:** Load from environment or secret manager at runtime; restrict access by role.
 - **TLS:** Enforce TLS for all sensitive endpoints; use HSTS and secure cookie flags.
 
+## Examples
+
+### Wrong - Weak password hashing
+
+```python
+import hashlib
+
+def hash_password(password: str) -> str:
+    # MD5 is fast and unsalted - easily cracked with rainbow tables
+    return hashlib.md5(password.encode()).hexdigest()
+```
+
+### Right - Strong password hashing with bcrypt
+
+```python
+import bcrypt
+
+def hash_password(password: str) -> bytes:
+    # bcrypt includes salt and adaptive cost factor
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))
+
+def verify_password(password: str, hashed: bytes) -> bool:
+    return bcrypt.checkpw(password.encode(), hashed)
+```
+
+### Right - Using Argon2 (recommended)
+
+```python
+from argon2 import PasswordHasher
+
+ph = PasswordHasher()
+
+def hash_password(password: str) -> str:
+    return ph.hash(password)
+
+def verify_password(password: str, hashed: str) -> bool:
+    try:
+        ph.verify(hashed, password)
+        return True
+    except Exception:
+        return False
+```
+
+### Wrong - Hardcoded secrets
+
+```python
+API_KEY = "sk-prod-12345abcdef"  # Exposed in source control
+db_password = "SuperSecret123"   # Plaintext in code
+```
+
+### Right - Secrets from environment/manager
+
+```python
+import os
+import boto3
+
+# From environment variable
+API_KEY = os.environ["API_KEY"]
+
+# From AWS Secrets Manager
+def get_db_password():
+    client = boto3.client("secretsmanager")
+    secret = client.get_secret_value(SecretId="prod/db/password")
+    return secret["SecretString"]
+```
+
+### Wrong - Weak encryption
+
+```python
+from Crypto.Cipher import DES  # DES is broken
+
+def encrypt(data: bytes, key: bytes) -> bytes:
+    cipher = DES.new(key, DES.MODE_ECB)  # ECB mode is insecure
+    return cipher.encrypt(data)
+```
+
+### Right - Strong encryption with AES-GCM
+
+```python
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+import os
+
+def encrypt(data: bytes, key: bytes) -> tuple[bytes, bytes]:
+    nonce = os.urandom(12)  # Unique per encryption
+    aesgcm = AESGCM(key)  # key must be 128, 192, or 256 bits
+    ciphertext = aesgcm.encrypt(nonce, data, None)
+    return nonce, ciphertext
+
+def decrypt(nonce: bytes, ciphertext: bytes, key: bytes) -> bytes:
+    aesgcm = AESGCM(key)
+    return aesgcm.decrypt(nonce, ciphertext, None)
+```
+
 ## Testing / Detection
 
 - Scan for hardcoded secrets and weak crypto (SAST/secret scanners).

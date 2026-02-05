@@ -33,6 +33,115 @@ Failures related to software and data integrity include insecure deserialization
 - **Pipeline:** Sign builds (e.g. attestations); verify before deploy; least privilege for pipeline identities.
 - **Updates:** Verify signature or hash from a trusted source before applying.
 
+## Examples
+
+### Wrong - Insecure deserialization
+
+```python
+import pickle
+
+@app.route("/load", methods=["POST"])
+def load_data():
+    # DANGER: Pickle can execute arbitrary code
+    data = pickle.loads(request.data)
+    return process(data)
+```
+
+### Right - Use safe data format with schema validation
+
+```python
+import json
+from pydantic import BaseModel, ValidationError
+
+class UserData(BaseModel):
+    name: str
+    email: str
+    age: int
+
+@app.route("/load", methods=["POST"])
+def load_data():
+    try:
+        # JSON is safe - no code execution
+        raw = json.loads(request.data)
+        # Validate against schema
+        data = UserData(**raw)
+        return process(data)
+    except (json.JSONDecodeError, ValidationError) as e:
+        return {"error": "Invalid data"}, 400
+```
+
+### Wrong - No integrity check on updates
+
+```python
+def auto_update():
+    # Downloads and runs without verification
+    update = requests.get("http://example.com/update.zip")
+    extract_and_install(update.content)
+```
+
+### Right - Verify signature before update
+
+```python
+import hashlib
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+
+def auto_update():
+    # Download update and signature
+    update = requests.get("https://example.com/update.zip")
+    signature = requests.get("https://example.com/update.zip.sig")
+    
+    # Verify signature with vendor's public key
+    try:
+        VENDOR_PUBLIC_KEY.verify(
+            signature.content,
+            update.content,
+            padding.PKCS1v15(),
+            hashes.SHA256()
+        )
+    except Exception:
+        raise SecurityError("Update signature verification failed")
+    
+    extract_and_install(update.content)
+```
+
+### Wrong - Unsigned CI/CD artifacts
+
+```yaml
+# GitHub Actions - no artifact signing
+jobs:
+  build:
+    steps:
+      - run: docker build -t myapp .
+      - run: docker push myapp:latest  # No signature
+```
+
+### Right - Signed container images
+
+```yaml
+# GitHub Actions with Cosign signing
+jobs:
+  build:
+    steps:
+      - run: docker build -t myapp .
+      - name: Sign image with Cosign
+        run: |
+          cosign sign --key cosign.key \
+            myapp@$(docker inspect --format='{{.Id}}' myapp)
+      - run: docker push myapp:latest
+```
+
+### Deserialization safety table
+
+| Format | Safe? | Notes |
+|--------|-------|-------|
+| JSON | Yes | No code execution, use with schema validation |
+| XML | Caution | Disable external entities (XXE) |
+| YAML | Caution | Use safe_load(), not load() |
+| Pickle (Python) | No | Arbitrary code execution |
+| Java Serialization | No | Arbitrary code execution |
+| PHP serialize | No | Object injection possible |
+
 ## Testing / Detection
 
 - SAST for deserialization of user-controlled data; review use of dangerous APIs.

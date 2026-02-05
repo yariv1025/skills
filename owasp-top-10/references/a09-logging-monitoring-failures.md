@@ -34,6 +34,136 @@ Missing or insufficient logging and monitoring makes detection and response to a
 - **Structure:** JSON or similar with consistent fields; include correlation ID for request tracing.
 - **Injection:** Sanitize or avoid including unsanitized user input in log messages.
 
+## Examples
+
+### Wrong - No security logging
+
+```python
+@app.route("/login", methods=["POST"])
+def login():
+    user = authenticate(request.form["user"], request.form["pass"])
+    if user:
+        return create_session(user)
+    # No logging of failed attempt
+    return "Invalid credentials", 401
+```
+
+### Right - Log security events
+
+```python
+import logging
+import structlog
+
+logger = structlog.get_logger()
+
+@app.route("/login", methods=["POST"])
+def login():
+    username = request.form["user"]
+    user = authenticate(username, request.form["pass"])
+    
+    if user:
+        logger.info(
+            "login_success",
+            user_id=user.id,
+            ip=request.remote_addr,
+            user_agent=request.headers.get("User-Agent")
+        )
+        return create_session(user)
+    
+    logger.warning(
+        "login_failure",
+        username=username,  # Log username, not password
+        ip=request.remote_addr,
+        reason="invalid_credentials"
+    )
+    return "Invalid credentials", 401
+```
+
+### Wrong - Logging sensitive data
+
+```python
+logger.info(f"User login: {username}, password: {password}")
+logger.debug(f"API response: {response.json()}")  # May contain tokens/PII
+logger.info(f"Payment processed: card={card_number}")
+```
+
+### Right - Redact sensitive fields
+
+```python
+def redact_sensitive(data: dict) -> dict:
+    sensitive_keys = {"password", "token", "card_number", "ssn", "api_key"}
+    return {
+        k: "[REDACTED]" if k.lower() in sensitive_keys else v
+        for k, v in data.items()
+    }
+
+logger.info("User login", user_id=user.id)  # No password
+logger.debug("API response", status=response.status_code)  # No body
+logger.info("Payment processed", last_four=card_number[-4:])
+```
+
+### Wrong - Log injection vulnerability
+
+```python
+# User input: "admin\n2024-01-01 INFO: User admin granted access"
+logger.info(f"Login attempt for user: {username}")
+# Results in fake log entries
+```
+
+### Right - Structured logging prevents injection
+
+```python
+import structlog
+
+logger = structlog.get_logger()
+
+# Structured logging - username is a field, not part of message
+logger.info("login_attempt", username=username)
+# Output: {"event": "login_attempt", "username": "admin\n...", "timestamp": "..."}
+# Newline is data, not log structure
+```
+
+### Structured log example
+
+```python
+import structlog
+import uuid
+
+structlog.configure(
+    processors=[
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.JSONRenderer()
+    ]
+)
+
+@app.before_request
+def add_request_id():
+    g.request_id = str(uuid.uuid4())
+
+logger.info(
+    "request_processed",
+    request_id=g.request_id,
+    user_id=current_user.id,
+    action="view_document",
+    resource_id=doc_id,
+    result="success",
+    duration_ms=elapsed
+)
+```
+
+### What to log checklist
+
+| Event | Log? | Fields |
+|-------|------|--------|
+| Login success | Yes | user_id, ip, timestamp |
+| Login failure | Yes | username (not password), ip, reason |
+| Access denied | Yes | user_id, resource, action |
+| Admin action | Yes | user_id, action, target, changes |
+| Input validation failure | Yes | endpoint, field, reason (not value) |
+| Password | Never | - |
+| API tokens | Never | - |
+| Full request body | Rarely | Redact sensitive fields |
+
 ## Testing / Detection
 
 - Verify logs for auth and access control events; confirm no secrets in logs.

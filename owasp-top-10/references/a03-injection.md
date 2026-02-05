@@ -34,6 +34,114 @@ Injection flaws occur when untrusted data is sent to an interpreter (SQL, NoSQL,
 - **Output encoding:** Use framework or library encoding for the target context (e.g. HTML entity encoding for HTML body).
 - **Templates:** Use template engines that auto-escape by default; avoid raw inclusion of user input.
 
+## Examples
+
+### Wrong - SQL injection via string concatenation
+
+```python
+def get_user(username: str):
+    # Attacker input: ' OR '1'='1' --
+    query = f"SELECT * FROM users WHERE username = '{username}'"
+    cursor.execute(query)  # Executes: SELECT * FROM users WHERE username = '' OR '1'='1' --'
+    return cursor.fetchone()
+```
+
+### Right - Parameterized query
+
+```python
+def get_user(username: str):
+    cursor.execute(
+        "SELECT * FROM users WHERE username = ?",
+        (username,)
+    )
+    return cursor.fetchone()
+```
+
+### Right - Using ORM (SQLAlchemy)
+
+```python
+def get_user(username: str):
+    # ORM handles parameterization automatically
+    return User.query.filter_by(username=username).first()
+```
+
+### Wrong - XSS via unescaped output
+
+```python
+from flask import Flask, request
+app = Flask(__name__)
+
+@app.route("/search")
+def search():
+    query = request.args.get("q", "")
+    # User input rendered directly - XSS vulnerability
+    return f"<h1>Results for: {query}</h1>"
+```
+
+### Right - HTML encoding
+
+```python
+import html
+from flask import Flask, request
+
+@app.route("/search")
+def search():
+    query = request.args.get("q", "")
+    safe_query = html.escape(query)
+    return f"<h1>Results for: {safe_query}</h1>"
+```
+
+### Right - Using template engine with auto-escape
+
+```python
+from flask import render_template
+
+@app.route("/search")
+def search():
+    query = request.args.get("q", "")
+    # Jinja2 auto-escapes by default
+    return render_template("search.html", query=query)
+```
+
+### Wrong - OS command injection
+
+```python
+import os
+
+def ping_host(host: str):
+    # Attacker input: 127.0.0.1; rm -rf /
+    os.system(f"ping -c 1 {host}")
+```
+
+### Right - Avoid shell, use subprocess with list
+
+```python
+import subprocess
+import re
+
+def ping_host(host: str):
+    # Validate input
+    if not re.match(r'^[\w.-]+$', host):
+        raise ValueError("Invalid hostname")
+    # Use list args - no shell interpretation
+    result = subprocess.run(
+        ["ping", "-c", "1", host],
+        capture_output=True,
+        text=True
+    )
+    return result.stdout
+```
+
+### Context-aware encoding table
+
+| Context | Encoding Method | Example |
+|---------|-----------------|---------|
+| HTML body | HTML entity encode | `&lt;script&gt;` |
+| HTML attribute | HTML attribute encode + quote | `value="&quot;data&quot;"` |
+| JavaScript string | JavaScript escape | `\x3cscript\x3e` |
+| URL parameter | URL encode | `%3Cscript%3E` |
+| CSS | CSS escape | `\3c script\3e` |
+
 ## Testing / Detection
 
 - SAST for concatenation into queries/commands and missing encoding.

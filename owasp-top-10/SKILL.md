@@ -33,6 +33,35 @@ Supply chain / dependencies → A06 (2025 A03 Software Supply Chain expands this
 - Use safe defaults in configuration; disable unnecessary features and change default credentials.
 - Track and update dependencies; verify integrity of artifacts and pipelines.
 
+## Quick Reference / Examples
+
+| Task | Approach |
+|------|----------|
+| Prevent SQL injection | Use parameterized queries; never concatenate user input. See [A03](references/a03-injection.md). |
+| Enforce access control | Check "can this user access this resource?" server-side before returning data. See [A01](references/a01-broken-access-control.md). |
+| Protect sensitive data | Use strong encryption (AES-256, RSA-2048+), secure key storage, TLS everywhere. See [A02](references/a02-cryptographic-failures.md). |
+| Harden configuration | Disable defaults, set security headers (CSP, HSTS), use generic error pages. See [A05](references/a05-security-misconfiguration.md). |
+| Manage dependencies | Track versions, run `npm audit` / `pip audit`, update promptly. See [A06](references/a06-vulnerable-components.md). |
+
+**Safe - parameterized query:**
+```python
+cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+```
+
+**Unsafe - SQL injection risk:**
+```python
+cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")  # NEVER do this
+```
+
+**Safe - authorization check:**
+```python
+def get_document(doc_id, current_user):
+    doc = Document.query.get(doc_id)
+    if doc.owner_id != current_user.id:
+        raise PermissionError("Access denied")
+    return doc
+```
+
 ## Workflow
 
 1. **Reviewing access control** → Read [references/a01-broken-access-control.md](references/a01-broken-access-control.md).

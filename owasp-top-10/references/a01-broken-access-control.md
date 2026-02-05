@@ -36,6 +36,82 @@ Access control enforces policy so users cannot act outside their intended permis
 - **Indirect reference:** Map a random token to an internal ID so clients cannot enumerate or guess others’ resources.
 - **Path traversal:** Use a safe base directory and resolve paths within it; reject ".." and absolute paths.
 
+## Examples
+
+### Wrong - Missing authorization check (IDOR)
+
+```python
+@app.get("/api/documents/{doc_id}")
+def get_document(doc_id: int):
+    # Anyone can access any document by guessing/enumerating IDs
+    return Document.query.get(doc_id)
+```
+
+### Right - Authorization check before access
+
+```python
+@app.get("/api/documents/{doc_id}")
+def get_document(doc_id: int, current_user: User = Depends(get_current_user)):
+    doc = Document.query.get(doc_id)
+    if doc is None:
+        raise HTTPException(404, "Not found")
+    # Check ownership or permission
+    if doc.owner_id != current_user.id and not current_user.has_permission("view_all_docs"):
+        raise HTTPException(403, "Access denied")
+    return doc
+```
+
+### Wrong - Path traversal vulnerability
+
+```python
+@app.get("/files/{filename}")
+def get_file(filename: str):
+    # Attacker can use ../../../etc/passwd
+    return FileResponse(f"/var/uploads/{filename}")
+```
+
+### Right - Safe path handling
+
+```python
+import os
+from pathlib import Path
+
+UPLOAD_DIR = Path("/var/uploads").resolve()
+
+@app.get("/files/{filename}")
+def get_file(filename: str):
+    # Resolve and verify path stays within allowed directory
+    safe_path = (UPLOAD_DIR / filename).resolve()
+    if not safe_path.is_relative_to(UPLOAD_DIR):
+        raise HTTPException(400, "Invalid path")
+    if not safe_path.exists():
+        raise HTTPException(404, "Not found")
+    return FileResponse(safe_path)
+```
+
+### Wrong - Overly permissive CORS
+
+```python
+# Allows any origin to make credentialed requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+)
+```
+
+### Right - Restrictive CORS
+
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://app.example.com"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+```
+
 ## Testing / Detection
 
 - Test with different roles and users (horizontal/vertical escalation).

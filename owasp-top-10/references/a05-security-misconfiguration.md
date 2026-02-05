@@ -35,6 +35,108 @@ Security misconfiguration includes insecure default configs, unnecessary feature
 - **Errors:** Catch exceptions at boundary; return generic message to client; log full detail securely.
 - **Separation:** Different config for dev/staging/prod; no debug or samples in prod.
 
+## Examples
+
+### Wrong - Missing security headers
+
+```python
+# Default response with no security headers
+@app.get("/")
+def home():
+    return {"message": "Welcome"}
+# Response lacks CSP, HSTS, X-Frame-Options, etc.
+```
+
+### Right - Security headers middleware
+
+```python
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+app = FastAPI(middleware=[Middleware(SecurityHeadersMiddleware)])
+```
+
+### Wrong - Debug mode in production
+
+```python
+# Flask
+app.run(debug=True)  # Exposes debugger, allows code execution
+
+# Django settings.py
+DEBUG = True  # Shows detailed errors, template paths, SQL queries
+```
+
+### Right - Production configuration
+
+```python
+# Flask
+app.run(debug=False)
+
+# Django settings.py (use environment variable)
+DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
+# In production: DEBUG=False
+```
+
+### Wrong - Default credentials
+
+```yaml
+# docker-compose.yml
+services:
+  db:
+    image: postgres
+    environment:
+      POSTGRES_PASSWORD: postgres  # Default/weak password
+```
+
+### Right - Strong, unique credentials
+
+```yaml
+# docker-compose.yml
+services:
+  db:
+    image: postgres
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+
+secrets:
+  db_password:
+    external: true  # Managed outside of compose file
+```
+
+### Security headers reference
+
+| Header | Purpose | Recommended Value |
+|--------|---------|-------------------|
+| `Strict-Transport-Security` | Force HTTPS | `max-age=31536000; includeSubDomains` |
+| `Content-Security-Policy` | Prevent XSS, injection | `default-src 'self'` (customize per app) |
+| `X-Content-Type-Options` | Prevent MIME sniffing | `nosniff` |
+| `X-Frame-Options` | Prevent clickjacking | `DENY` or `SAMEORIGIN` |
+| `Referrer-Policy` | Control referrer leakage | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | Restrict browser features | `geolocation=(), camera=()` |
+
+### Hardening checklist
+
+- [ ] Change all default credentials
+- [ ] Disable debug mode and verbose errors
+- [ ] Remove sample/test applications
+- [ ] Set security headers on all responses
+- [ ] Disable directory listing
+- [ ] Remove server version headers
+- [ ] Review and restrict CORS policy
+- [ ] Disable unused HTTP methods
+
 ## Testing / Detection
 
 - Scan for default credentials and known weak configs.

@@ -26,6 +26,36 @@ This skill encodes the OWASP Top 10 for Large Language Model Applications for se
 
 - Treat all user and external input as untrusted; validate and sanitize LLM outputs before use (XSS, SSRF, RCE). Limit agency and tool use; protect system prompts and RAG data. Apply rate limits and cost controls.
 
+## Quick Reference / Examples
+
+| Task | Approach |
+|------|----------|
+| Prevent prompt injection | Use delimiters, validate input, separate system/user context. See [LLM01](references/llm01-prompt-injection.md). |
+| Protect sensitive data | Filter PII from training/prompts, apply output guards. See [LLM02](references/llm02-sensitive-information-disclosure.md). |
+| Validate LLM output | Sanitize before rendering (XSS) or executing (RCE). See [LLM05](references/llm05-improper-output-handling.md). |
+| Limit agency | Require human approval for destructive actions; scope tool permissions. See [LLM06](references/llm06-excessive-agency.md). |
+| Control costs | Apply token limits, rate limiting, and budget caps. See [LLM10](references/llm10-unbounded-consumption.md). |
+
+**Safe - delimiter and input validation:**
+```python
+system_prompt = """You are a helpful assistant.
+<user_input>
+{sanitized_user_input}
+</user_input>
+Answer based only on the user input above."""
+```
+
+**Unsafe - direct concatenation (injection risk):**
+```python
+prompt = f"Answer this question: {user_input}"  # User can inject instructions
+```
+
+**Output sanitization before rendering:**
+```python
+import html
+safe_output = html.escape(llm_response)  # Prevent XSS if rendering in browser
+```
+
 ## Workflow
 
 Load the reference for the risk you are addressing. See [OWASP Top 10 for LLM Applications](https://owasp.org/www-project-top-10-for-large-language-model-applications) and [genai.owasp.org](https://genai.owasp.org/) for the official list.

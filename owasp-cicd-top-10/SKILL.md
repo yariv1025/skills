@@ -26,6 +26,47 @@ This skill encodes the OWASP Top 10 CI/CD Security Risks for secure pipeline des
 
 - Enforce approval and branching for pipeline execution; apply least-privilege IAM. Verify dependency and artifact integrity; secure credentials; audit third-party usage; enable logging and alerting.
 
+## Quick Reference / Examples
+
+| Task | Approach |
+|------|----------|
+| Protect main branch | Require PR reviews, signed commits, branch protection. See [CICD-SEC-1](references/cicd-sec-1-flow-control.md). |
+| Secure pipeline IAM | Least privilege, short-lived tokens, no shared creds. See [CICD-SEC-2](references/cicd-sec-2-iam.md). |
+| Verify dependencies | Lock versions, audit, verify checksums. See [CICD-SEC-3](references/cicd-sec-3-dependency-chain-abuse.md). |
+| Protect credentials | Use secrets manager, rotate, never log. See [CICD-SEC-6](references/cicd-sec-6-credential-hygiene.md). |
+| Sign artifacts | Sign images/packages, verify before deploy. See [CICD-SEC-9](references/cicd-sec-9-artifact-integrity.md). |
+
+**Safe - GitHub branch protection:**
+```yaml
+# .github/settings.yml (or repo settings)
+branches:
+  - name: main
+    protection:
+      required_pull_request_reviews:
+        required_approving_review_count: 1
+      required_status_checks:
+        strict: true
+```
+
+**Safe - short-lived OIDC credentials (GitHub Actions):**
+```yaml
+permissions:
+  id-token: write
+  contents: read
+
+steps:
+  - uses: aws-actions/configure-aws-credentials@v4
+    with:
+      role-to-assume: arn:aws:iam::123456789:role/GitHubActionsRole
+      aws-region: us-east-1
+```
+
+**Unsafe - long-lived secrets:**
+```yaml
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_KEY }}  # Prefer OIDC over static keys
+```
+
 ## Workflow
 
 Load the reference for the risk you are addressing. See [OWASP Top 10 CI/CD Security Risks](https://owasp.org/www-project-top-10-ci-cd-security-risks/) for the official list.

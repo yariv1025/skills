@@ -26,6 +26,50 @@ This skill encodes the OWASP Top 10 Privacy Risks for privacy-aware design and r
 
 - Fix technical vulnerabilities that affect data; prevent operator leakage; have a breach response plan. Obtain valid consent; be transparent; support deletion, access, and portability; minimize collection; expire sessions.
 
+## Quick Reference / Examples
+
+| Task | Approach |
+|------|----------|
+| Obtain valid consent | Explicit opt-in, granular choices, easy withdrawal. See [P4](references/p4-consent.md). |
+| Support data deletion | Implement "right to erasure" across all stores. See [P6](references/p6-insufficient-deletion.md). |
+| Provide data access | Export user data in portable format (JSON/CSV). See [P9](references/p9-user-access-modify-data.md). |
+| Minimize collection | Collect only what's necessary for the stated purpose. See [P10](references/p10-excessive-collection.md). |
+| Breach response | Have a documented plan, notify within required timeframes. See [P3](references/p3-breach-response.md). |
+
+**Data deletion endpoint:**
+```python
+@app.delete("/api/users/{user_id}/data")
+def delete_user_data(user_id: str, current_user: User):
+    if current_user.id != user_id:
+        raise HTTPException(403)
+    # Delete from all data stores
+    UserDB.delete(user_id)
+    AnalyticsDB.anonymize(user_id)
+    SearchIndex.remove(user_id)
+    BackupService.schedule_deletion(user_id)
+    return {"status": "deletion_scheduled"}
+```
+
+**Consent collection (explicit opt-in):**
+```javascript
+// Require explicit action, no pre-checked boxes
+<input type="checkbox" id="marketing" />
+<label for="marketing">I agree to receive marketing emails</label>
+// Only enable submit when required consents are given
+```
+
+**Data export endpoint:**
+```python
+@app.get("/api/users/{user_id}/export")
+def export_user_data(user_id: str):
+    data = collect_all_user_data(user_id)
+    return Response(
+        content=json.dumps(data, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename={user_id}_data.json"}
+    )
+```
+
 ## Workflow
 
 Load the reference for the risk you are addressing. See [OWASP Top 10 Privacy Risks](https://owasp.org/www-project-top-10-privacy-risks) for the official list.

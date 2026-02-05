@@ -33,6 +33,91 @@ Using components (libraries, frameworks, OS) with known vulnerabilities or that 
 - **Pinning:** Use lock files (e.g. package-lock.json, poetry.lock) and reproducible builds.
 - **SBOM:** Generate and store SBOM for releases; use for vulnerability and license compliance.
 
+## Examples
+
+### Wrong - No dependency scanning
+
+```yaml
+# CI pipeline with no security checks
+jobs:
+  build:
+    steps:
+      - run: npm install
+      - run: npm run build
+      # No vulnerability scanning - ships with known CVEs
+```
+
+### Right - Dependency scanning in CI
+
+```yaml
+# GitHub Actions with dependency scanning
+jobs:
+  security:
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci
+      - name: Run npm audit
+        run: npm audit --audit-level=high
+      - name: Run Snyk
+        uses: snyk/actions/node@master
+        with:
+          args: --severity-threshold=high
+```
+
+### Wrong - No lock file / unpinned versions
+
+```json
+{
+  "dependencies": {
+    "lodash": "^4.0.0",
+    "express": "*"
+  }
+}
+```
+
+### Right - Pinned versions with lock file
+
+```json
+{
+  "dependencies": {
+    "lodash": "4.17.21",
+    "express": "4.18.2"
+  }
+}
+```
+
+```bash
+# Always commit lock file
+git add package-lock.json
+# Use ci instead of install for reproducible builds
+npm ci
+```
+
+### Generate and use SBOM
+
+```bash
+# Generate SBOM with CycloneDX
+npx @cyclonedx/cyclonedx-npm --output-file sbom.json
+
+# Python
+pip install cyclonedx-bom
+cyclonedx-py -o sbom.json
+
+# Scan SBOM for vulnerabilities
+grype sbom:./sbom.json
+```
+
+### Dependency audit commands
+
+| Package Manager | Audit Command | Fix Command |
+|-----------------|---------------|-------------|
+| npm | `npm audit` | `npm audit fix` |
+| yarn | `yarn audit` | `yarn upgrade` |
+| pip | `pip-audit` | Manual update |
+| poetry | `poetry audit` | `poetry update` |
+| cargo | `cargo audit` | `cargo update` |
+| go | `govulncheck ./...` | `go get -u` |
+
 ## Testing / Detection
 
 - SCA tools (e.g. Snyk, Dependabot, OWASP Dependency-Check); run in CI.

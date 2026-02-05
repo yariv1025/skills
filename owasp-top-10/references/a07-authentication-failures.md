@@ -36,6 +36,117 @@ Authentication and identification failures allow attackers to compromise passwor
 - **Passwords:** Hash with Argon2/bcrypt; never log or echo; use secure comparison.
 - **MFA:** Prefer TOTP or hardware; avoid SMS for high-risk; enforce for admin and sensitive operations.
 
+## Examples
+
+### Wrong - Weak session management
+
+```python
+from flask import session
+
+@app.route("/login", methods=["POST"])
+def login():
+    if check_credentials(request.form["user"], request.form["pass"]):
+        # Session ID in cookie is predictable or not regenerated
+        session["user"] = request.form["user"]
+        return redirect("/dashboard")
+```
+
+### Right - Secure session management
+
+```python
+from flask import session
+import secrets
+
+app.config["SESSION_COOKIE_SECURE"] = True      # HTTPS only
+app.config["SESSION_COOKIE_HTTPONLY"] = True    # No JS access
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"   # CSRF protection
+app.config["PERMANENT_SESSION_LIFETIME"] = 3600  # 1 hour timeout
+
+@app.route("/login", methods=["POST"])
+def login():
+    if check_credentials(request.form["user"], request.form["pass"]):
+        session.clear()  # Prevent session fixation
+        session.regenerate()  # New session ID
+        session["user"] = request.form["user"]
+        session["csrf_token"] = secrets.token_hex(32)
+        return redirect("/dashboard")
+```
+
+### Wrong - No rate limiting on login
+
+```python
+@app.route("/login", methods=["POST"])
+def login():
+    # Unlimited attempts - brute force / credential stuffing possible
+    if authenticate(request.form["user"], request.form["pass"]):
+        return create_session()
+    return "Invalid credentials", 401
+```
+
+### Right - Rate limiting with account lockout
+
+```python
+from flask_limiter import Limiter
+import time
+
+limiter = Limiter(app, key_func=get_remote_address)
+failed_attempts = {}  # Use Redis in production
+
+@app.route("/login", methods=["POST"])
+@limiter.limit("10/minute")
+def login():
+    username = request.form["user"]
+    
+    # Check for account lockout
+    if is_locked(username):
+        return "Account temporarily locked", 429
+    
+    if authenticate(username, request.form["pass"]):
+        clear_failed_attempts(username)
+        return create_session()
+    
+    record_failed_attempt(username)
+    # Constant-time response
+    time.sleep(0.1)
+    return "Invalid credentials", 401
+
+def is_locked(username):
+    attempts = failed_attempts.get(username, {"count": 0, "time": 0})
+    if attempts["count"] >= 5 and time.time() - attempts["time"] < 900:
+        return True
+    return False
+```
+
+### Wrong - Session token in URL
+
+```python
+# Session ID exposed in URL - logged, cached, shared via Referer
+@app.route("/dashboard")
+def dashboard():
+    token = request.args.get("session_token")
+    # https://example.com/dashboard?session_token=abc123
+```
+
+### Right - Session in secure cookie
+
+```python
+# Session ID in cookie with secure flags
+@app.route("/dashboard")
+def dashboard():
+    if "user" not in session:
+        return redirect("/login")
+    # Session managed via secure cookie, not URL
+```
+
+### Password policy checklist
+
+- [ ] Minimum 12 characters (or 8 with complexity)
+- [ ] Check against breached password lists (Have I Been Pwned)
+- [ ] No password hints or security questions
+- [ ] Secure password reset with time-limited tokens
+- [ ] Hash with Argon2id or bcrypt (cost factor 10+)
+- [ ] MFA for admin and sensitive operations
+
 ## Testing / Detection
 
 - Test for default credentials, weak password rules, and missing MFA.

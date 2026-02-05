@@ -31,6 +31,44 @@ Based on OWASP API Security Top 10:2023.
 - Apply rate limiting, quotas, and cost controls to prevent abuse and DoS.
 - Maintain an API inventory; retire or protect deprecated and debug endpoints.
 
+## Quick Reference / Examples
+
+| Task | Approach |
+|------|----------|
+| Object-level auth (IDOR) | Verify user owns/can access the resource by ID server-side. See [API1](references/api1-broken-object-level-authorization.md). |
+| Function-level auth | Check user role before admin/sensitive operations. See [API5](references/api5-broken-function-level-authorization.md). |
+| Rate limiting | Apply per-user/IP limits, quotas, and timeouts. See [API4](references/api4-unrestricted-resource-consumption.md). |
+| SSRF prevention | Validate/allowlist URLs; block internal ranges. See [API7](references/api7-ssrf.md). |
+| Third-party APIs | Validate responses, use TLS, set timeouts. See [API10](references/api10-unsafe-consumption-of-apis.md). |
+
+**Safe - object-level authorization check:**
+```python
+@app.get("/api/orders/{order_id}")
+def get_order(order_id: int, current_user: User):
+    order = Order.query.get(order_id)
+    if order.user_id != current_user.id:
+        raise HTTPException(403, "Access denied")
+    return order
+```
+
+**Unsafe - missing authorization (IDOR vulnerability):**
+```python
+@app.get("/api/orders/{order_id}")
+def get_order(order_id: int):
+    return Order.query.get(order_id)  # Any user can access any order!
+```
+
+**Rate limiting example (FastAPI):**
+```python
+from slowapi import Limiter
+limiter = Limiter(key_func=get_remote_address)
+
+@app.get("/api/search")
+@limiter.limit("10/minute")
+def search(query: str):
+    return perform_search(query)
+```
+
 ## Workflow
 
 1. **Object-level authorization (IDOR)** → Read [references/api1-broken-object-level-authorization.md](references/api1-broken-object-level-authorization.md).
