@@ -10,6 +10,7 @@ Patterns drawn from exemplar projects (e.g. distributed task queues, web APIs): 
 4. [Tracing & Instrumentation](#tracing--instrumentation)
 5. [Health & Readiness](#health--readiness)
 6. [Distributed Task Systems](#distributed-task-systems)
+7. [Examples](#examples)
 
 ---
 
@@ -60,3 +61,78 @@ Patterns drawn from exemplar projects (e.g. distributed task queues, web APIs): 
 - **Silent failures**: Some brokers ack tasks even when the worker crashes or is OOM-killed. Use result backends and monitor for “acknowledged but never completed” patterns; consider late-ack and task tracking for critical tasks.
 - **Four layers to monitor**: (1) Task execution (latency, success/retry/failure), (2) Worker health (CPU, memory, concurrency), (3) Queue health (depth, consumer lag), (4) Schedule execution (if you use a scheduler). Combine tooling (dashboards, OpenTelemetry, custom metrics) as needed.
 - **Scheduler**: If you have a single scheduler process, it’s a single point of failure. Monitor it and consider redundancy or external schedulers for critical schedules.
+
+---
+
+## Examples
+
+### Wrong — Unstructured or prose logging
+
+```python
+print(f"User {user_id} did something")
+logger.info(f"User {user_id} did X")  # Not machine-parseable; no correlation
+```
+
+### Right — Structured log with correlation ID
+
+```python
+logger.info(
+    "request_handled",
+    extra={
+        "request_id": request_id,
+        "user_id": user_id,
+        "path": path,
+        "status": 200,
+        "duration_ms": elapsed,
+    },
+)
+```
+
+### Wrong — Single health endpoint that only returns 200
+
+```python
+@app.get("/health")
+def health():
+    return {"status": "ok"}  # Always 200; orchestrator can't tell if DB is down
+```
+
+### Right — Liveness vs readiness; 503 when not ready
+
+```python
+@app.get("/live")
+def liveness():
+    return {"status": "ok"}  # Process is running
+
+@app.get("/ready")
+def readiness(db: Session = Depends(get_db)):
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    return {"status": "ready"}
+```
+
+### Wrong — Treating programmer error as operational
+
+```python
+try:
+    result = data["key"]["nested"]
+except Exception as e:
+    retry()  # KeyError is a bug; retrying won't help
+```
+
+### Right — Operational error: handle and return; programmer error: log and surface
+
+```python
+# Operational: timeout, validation, dependency down — return clear response
+try:
+    response = await client.get(url, timeout=5)
+except asyncio.TimeoutError:
+    logger.warning("dependency_timeout", extra={"url": url})
+    raise HTTPException(502, "Upstream timeout")
+
+# Programmer error: log with stack trace, don't retry
+except KeyError as e:
+    logger.exception("missing_key")
+    raise
+```

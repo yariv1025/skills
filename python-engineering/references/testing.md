@@ -10,6 +10,7 @@ Patterns drawn from exemplar projects: test pyramid, fixtures, CI, async/sync. A
 4. [Parametrization & Edge Cases](#parametrization--edge-cases)
 5. [CI & Quality Gates](#ci--quality-gates)
 6. [Async & Sync Testing](#async--sync-testing)
+7. [Examples](#examples)
 
 ---
 
@@ -66,3 +67,83 @@ Balance so most feedback comes from units; integration catches interface issues;
 - **Sync tests**: Use a sync HTTP client or test client for sync request/response tests.
 - **Interface wrappers**: For HTTP, consider a thin interface (e.g. method per endpoint) with type-annotated requests/responses. Test the interface with a real or fake backend; keeps tests stable when URLs or internals change.
 - **Connection reuse**: In tests, use one client per test or per module (fixture) to avoid flaky “too many connections” in parallel runs.
+
+---
+
+## Examples
+
+### Wrong — Test creates DB connection and leaves it open
+
+```python
+def test_create_user():
+    conn = create_engine("sqlite:///test.db").connect()
+    repo = UserRepository(conn)
+    repo.add(User(name="alice"))
+    assert repo.get_by_name("alice") is not None
+    # Connection never closed; no rollback — state leaks to next test
+```
+
+### Right — Fixture with yield for setup/teardown and isolation
+
+```python
+@pytest.fixture
+def db_session():
+    engine = create_engine("sqlite:///:memory:")
+    with engine.connect() as conn:
+        conn.begin()
+        yield conn
+        conn.rollback()
+
+def test_create_user(db_session):
+    repo = UserRepository(db_session)
+    repo.add(User(name="alice"))
+    assert repo.get_by_name("alice") is not None
+```
+
+### Wrong — Copy-pasted test for each input
+
+```python
+def test_validate_empty():
+    assert validate("") is False
+
+def test_validate_negative():
+    assert validate(-1) is False
+
+def test_validate_too_long():
+    assert validate("x" * 1000) is False
+# ... many more
+```
+
+### Right — Parametrize valid/invalid/boundary inputs
+
+```python
+@pytest.mark.parametrize("value,expected", [
+    ("", False),
+    (-1, False),
+    ("x" * 1000, False),
+    (0, True),
+    (100, True),
+])
+def test_validate(value, expected):
+    assert validate(value) is expected
+```
+
+### Wrong — Unit test calls real API
+
+```python
+def test_fetch_user():
+    response = requests.get("https://api.example.com/users/1")  # Network; slow; flaky
+    assert response.json()["name"] == "Alice"
+```
+
+### Right — Patch or inject fake client; fast and deterministic
+
+```python
+def test_fetch_user(monkeypatch):
+    def fake_get(*args, **kwargs):
+        return type("R", (), {"json": lambda: {"name": "Alice"}, "status_code": 200})()
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    user = fetch_user(1)
+    assert user["name"] == "Alice"
+```

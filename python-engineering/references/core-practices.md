@@ -9,6 +9,7 @@ Patterns drawn from exemplar projects: runtime, packaging, I/O, reliability. App
 3. [I/O & Network Correctness](#io--network-correctness)
 4. [Reliability & Secure Coding](#reliability--secure-coding)
 5. [Tooling & Consistency](#tooling--consistency)
+6. [Examples](#examples)
 
 ---
 
@@ -54,3 +55,87 @@ Patterns drawn from exemplar projects: runtime, packaging, I/O, reliability. App
 - **Opinionated formatter**: One style reduces churn and review noise. Few options; “just run it.”
 - **CLI**: Use argparse or Click; support config file + env + flags. Prefer clear subcommands and a way to disable plugins or extensions when needed.
 - **Minimal surface**: Keep public API and options small. Few flags; complexity inside the tool, not in configuration.
+
+---
+
+## Examples
+
+### Wrong — Open file/socket without with; manual try/finally error-prone
+
+```python
+f = open(path)
+data = f.read()
+process(data)
+f.close()  # Skipped if process() raises
+```
+
+### Right — Context manager guarantees cleanup
+
+```python
+with open(path) as f:
+    data = f.read()
+    process(data)
+# f closed even if process() raises
+```
+
+### Wrong — Bare retry loop with fixed sleep
+
+```python
+for _ in range(5):
+    try:
+        return client.get(url)
+    except Exception:
+        time.sleep(1)  # No backoff; no jitter; retries on all errors
+return None
+```
+
+### Right — Exponential backoff, jitter, max attempts, idempotent operation
+
+```python
+import random
+
+def fetch_with_retry(url, max_attempts=5):
+    for attempt in range(max_attempts):
+        try:
+            return client.get(url, timeout=5)
+        except (TimeoutError, ConnectionError):
+            if attempt == max_attempts - 1:
+                raise
+            delay = (2 ** attempt) + random.uniform(0, 1)
+            time.sleep(delay)
+```
+
+### Wrong — Use user input directly in DB or subprocess
+
+```python
+user_id = request.args.get("id")
+cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")  # Injection
+# or: subprocess.run(f"echo {user_input}", shell=True)
+```
+
+### Right — Validate at boundary; then pass validated value
+
+```python
+from pydantic import BaseModel
+
+class UserQuery(BaseModel):
+    id: int  # Validated type
+
+query = UserQuery(id=request.args.get("id"))  # ValidationError if invalid
+cursor.execute("SELECT * FROM users WHERE id = ?", (query.id,))
+```
+
+### Wrong — Hardcoded secret
+
+```python
+API_KEY = "sk-prod-abc123"  # In repo; visible to anyone with access
+```
+
+### Right — Env or secret manager
+
+```python
+import os
+
+API_KEY = os.environ["API_KEY"]  # Set at runtime; not in code
+# Or: load from secret manager in config module, validate at startup
+```

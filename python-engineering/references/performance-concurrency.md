@@ -10,6 +10,7 @@ Patterns drawn from exemplar projects: async safety, resource management, valida
 4. [Multiprocessing Practices](#multiprocessing-practices)
 5. [Throughput & Resource Control](#throughput--resource-control)
 6. [Performance Validation](#performance-validation)
+7. [Examples](#examples)
 
 ---
 
@@ -64,3 +65,82 @@ Match the model to the bottleneck. Mix with care: run blocking code in thread po
 - **Profiling**: Use profilers (cProfile, py-spy, etc.) on realistic workloads. Focus on hot paths and unexpected blocking.
 - **Benchmarks**: Add benchmarks for critical paths (e.g. request handling, task execution). Run in CI or nightly; track regressions.
 - **Load testing**: Simulate production load and validate SLOs (latency, error rate, throughput). Run against staging or a copy of production config.
+
+---
+
+## Examples
+
+### Wrong — New async client per request
+
+```python
+@app.get("/proxy")
+async def proxy(url: str):
+    async with httpx.AsyncClient() as client:  # New connection every request
+        response = await client.get(url)
+    return response.text
+```
+
+### Right — One long-lived client; create at startup, close at shutdown
+
+```python
+async def lifespan(app):
+    app.state.http_client = httpx.AsyncClient(timeout=httpx.Timeout(5.0))
+    yield
+    await app.state.http_client.aclose()
+
+@app.get("/proxy")
+async def proxy(url: str, request: Request):
+    response = await request.app.state.http_client.get(url)
+    return response.text
+```
+
+### Wrong — External call with no timeout
+
+```python
+response = await client.get(url)  # Can hang forever
+```
+
+### Right — Timeout on every external call
+
+```python
+client = httpx.AsyncClient(timeout=httpx.Timeout(connect=3.0, read=10.0))
+response = await client.get(url)
+# or per-call: await client.get(url, timeout=5.0)
+```
+
+### Wrong — Blocking call in async handler
+
+```python
+@app.get("/data")
+async def get_data():
+    data = requests.get("https://api.example.com/data").json()  # Blocks event loop
+    return data
+```
+
+### Right — Async client or run_in_executor for blocking lib
+
+```python
+@app.get("/data")
+async def get_data(request: Request):
+    response = await request.app.state.http_client.get("https://api.example.com/data")
+    return response.json()
+# If you must use sync requests: await asyncio.get_event_loop().run_in_executor(None, sync_fetch)
+```
+
+### Wrong — Unbounded asyncio.gather on many tasks
+
+```python
+results = await asyncio.gather(*[fetch(url) for url in urls])  # 10_000 URLs = 10_000 connections
+```
+
+### Right — Semaphore to bound concurrency
+
+```python
+sem = asyncio.Semaphore(20)
+
+async def fetch_bounded(url):
+    async with sem:
+        return await client.get(url)
+
+results = await asyncio.gather(*[fetch_bounded(url) for url in urls])
+```

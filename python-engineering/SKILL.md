@@ -27,6 +27,29 @@ This skill is structured per the skill-creator: essentials and navigation in SKI
 - **Concurrency**: Async for I/O; threads for blocking libs; processes for CPU-bound. One long-lived client per dependency; timeouts and backpressure everywhere.
 - **Reliability**: Context managers for cleanup; validate at boundaries; no blocking calls in async paths; idempotent retries and circuit breaking for I/O.
 
+## Quick Reference / Examples
+
+| Task | Approach |
+|------|----------|
+| Inject dependencies | Use typed getters or framework DI; see [references/architecture.md](references/architecture.md). |
+| Structured logging | Log with extra dict and correlation ID; see [references/observability.md](references/observability.md). |
+| Reuse HTTP client | One long-lived client per app; timeouts on every call. See [references/performance-concurrency.md](references/performance-concurrency.md). |
+| Resource cleanup | Use context managers; avoid blocking in async. See [references/core-practices.md](references/core-practices.md). |
+| Isolate tests | Fixtures, parametrize, no hidden network/time. See [references/testing.md](references/testing.md). |
+
+**Context manager (reliable cleanup):**
+```python
+with open(path) as f:
+    process(f.read())
+# or async: async with client: ...
+```
+
+**Structured log / typed config:**
+```python
+logger.info("request_handled", extra={"request_id": req_id, "path": path})
+# Config: Settings from Pydantic BaseSettings or env, validated at startup.
+```
+
 ## Workflow
 
 1. **Designing a new service** → Read [references/architecture.md](references/architecture.md), then [references/core-practices.md](references/core-practices.md).

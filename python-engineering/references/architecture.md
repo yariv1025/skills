@@ -10,6 +10,7 @@ Patterns drawn from exemplar projects (e.g. FastAPI, Poetry)—package structure
 4. [Configuration Management](#configuration-management)
 5. [Plugin Architecture](#plugin-architecture)
 6. [Production Layout](#production-layout)
+7. [Examples](#examples)
 
 ---
 
@@ -80,3 +81,89 @@ Example: Router depends on `UserService`; `UserService` depends on `UserReposito
 - **Three-tier pseudo-architecture**: Presentation (API/routers) → Application (use cases, orchestration) → Data (repositories, external services).
 - **Security, testing, async, config**: Design these in from the start so scaling to production and multiple teams doesn’t require a full rewrite.
 - **Naming and tooling**: Consistent conventions for modules, migrations, and tooling so the codebase stays navigable as it grows.
+
+---
+
+## Examples
+
+### Wrong — Router instantiates DB/service directly
+
+```python
+# Tight coupling; hard to test or swap implementation
+from myapp.db import get_engine
+
+@app.get("/users/{user_id}")
+def get_user(user_id: int):
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id}).fetchone()
+    return {"id": row[0], "name": row[1]}
+```
+
+### Right — Dependencies injected; router receives service
+
+```python
+# Router depends on abstraction; service/repo wired via get_db
+def get_user_service(db = Depends(get_db)) -> UserService:
+    return UserService(UserRepository(db))
+
+@app.get("/users/{user_id}")
+def get_user(user_id: int, user_service: UserService = Depends(get_user_service)):
+    user = user_service.get_by_id(user_id)
+    if not user:
+        raise HTTPException(404)
+    return {"id": user.id, "name": user.name}
+```
+
+### Wrong — Config scattered, no validation
+
+```python
+# Different modules read env directly; no single place; fails at runtime
+# in api/users.py
+db_url = os.environ["DATABASE_URL"]
+# in worker/tasks.py
+redis_url = os.getenv("REDIS_URL", "redis://localhost")  # Default may be wrong for prod
+```
+
+### Right — Single settings module, validated at startup
+
+```python
+# config.py
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    database_url: str
+    redis_url: str = "redis://localhost"
+    log_level: str = "INFO"
+
+    class Config:
+        env_file = ".env"
+
+def get_settings() -> Settings:
+    return Settings()  # Raises ValidationError if required fields missing
+```
+
+### Wrong — SQL and business logic in route handler
+
+```python
+@app.post("/orders")
+def create_order(data: dict):
+    # Routing, validation, business rules, and persistence mixed together
+    if data["amount"] < 0:
+        raise HTTPException(400, "Invalid amount")
+    with get_engine().connect() as conn:
+        conn.execute(text("INSERT INTO orders ..."), data)
+        conn.commit()
+    return {"status": "created"}
+```
+
+### Right — Thin route; use case and repository abstraction
+
+```python
+@app.post("/orders")
+def create_order(data: OrderCreate, order_service: OrderService = Depends(get_order_service)):
+    order = order_service.create(data)  # Use case: validation + business rules
+    return {"id": order.id, "status": "created"}
+
+# OrderService uses OrderRepository (interface); repository handles SQL.
+```
