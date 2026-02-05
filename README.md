@@ -19,6 +19,7 @@ Each skill is built around a required `SKILL.md` (with YAML frontmatter and mark
 
 | Path | Purpose |
 |------|--------|
+| **agent-dev-guardrails/** | Disciplined agent development: plan-first, small slices, self-review roles, quality gates, project setup. Use when starting a project, setting conventions, or enforcing code quality and validation workflows. |
 | **python-engineering/** | Production Python engineering patterns: architecture, observability, testing, performance/concurrency, core practices. Use when designing Python systems, implementing APIs, setting up monitoring, structuring tests, or following Python best practices. |
 | **owasp-top-10/** | OWASP Web Application Security Top 10. Use when implementing or reviewing access control, authentication, crypto, injection, secure design, config, dependencies, logging, or SSRF. |
 | **owasp-api-security-top-10/** | OWASP API Security Top 10. Use when designing or reviewing APIs: authorization, auth, rate limiting, business flows, SSRF, inventory, third-party API consumption. |
@@ -30,6 +31,15 @@ Each skill is built around a required `SKILL.md` (with YAML frontmatter and mark
 | **owasp-serverless-top-10/** | OWASP Serverless Top 10. Use when building or reviewing serverless apps: injection, auth, data exposure, XXE, access control, misconfiguration, XSS, deserialization, vulnerable components, logging. |
 | **owasp-cloud-native-top-10/** | OWASP Cloud-Native Application Security Top 10 (6 risks). Use when securing containers and cloud-native apps: config, injection, auth, CI/CD and supply chain, secrets, network policies. |
 | **owasp-privacy-top-10/** | OWASP Top 10 Privacy Risks. Use when addressing privacy: app vulns, data leakage, breach response, consent, transparency, deletion, data quality, session expiration, user access, excessive collection. |
+
+## agent-dev-guardrails (skill details)
+
+Plan-first development, small slices, self-review roles, quality gates, and project setup. Based on CURSOR_AGENT_GUIDE-style guardrails.
+
+- **Path**: `agent-dev-guardrails/`
+- **When to use**: Starting a new project, setting development conventions, wanting structured planning, or enforcing code quality and validation.
+- **Contents**: SKILL.md (non-negotiables, hooks), references (planning-protocol, dev-docs-system, specialized-roles, project-setup, quality-gates), scripts/setup_project.py (generates .cursor/rules, AGENTS.md, dev/).
+- **Pattern**: Progressive disclosure; references loaded when relevant.
 
 ## python-engineering (skill details)
 
@@ -70,6 +80,7 @@ npx skills add yariv1025/skills
 **Install only one skill (e.g. for Cursor):**
 
 ```bash
+npx skills add yariv1025/skills --skill agent-dev-guardrails -a cursor -y
 npx skills add yariv1025/skills --skill python-engineering -a cursor -y
 npx skills add yariv1025/skills --skill owasp-top-10 -a cursor -y
 ```
@@ -77,6 +88,7 @@ npx skills add yariv1025/skills --skill owasp-top-10 -a cursor -y
 **Install by direct path:**
 
 ```bash
+npx skills add https://github.com/yariv1025/skills/tree/main/agent-dev-guardrails
 npx skills add https://github.com/yariv1025/skills/tree/main/python-engineering
 ```
 
@@ -88,6 +100,7 @@ Use the skill folder (e.g. `python-engineering/`) with your AI agent in the way 
 
 ```bash
 pip install -r requirements.txt
+python skill-creator/scripts/package_skill.py agent-dev-guardrails [output-directory]
 python skill-creator/scripts/package_skill.py python-engineering [output-directory]
 python skill-creator/scripts/package_skill.py owasp-top-10 [output-directory]
 ```
